@@ -1,0 +1,62 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+
+#define PACKETS 10
+#define SERVER_PORT 1234
+
+void main() {
+    // Create socket
+    int ClientSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (ClientSocket == -1) {
+        perror("Error creating socket");
+        exit(EXIT_FAILURE);
+    }
+
+    // Connect
+    struct sockaddr_in Client = {
+        .sin_family = AF_INET,
+        .sin_port = htons(SERVER_PORT),
+        .sin_addr.s_addr = inet_addr("127.0.0.1")
+    };
+    if (connect(ClientSocket, (struct sockaddr*)&Client, sizeof(Client)) == -1) {
+        perror("Error connecting");
+        exit(EXIT_FAILURE);
+    }
+
+    // Stop-and-Wait ARQ
+    int SendPackets = 0;
+    while (SendPackets < PACKETS) {
+        if (send(ClientSocket, &SendPackets, sizeof(SendPackets), 0) == -1) {
+            perror("Error sending packets");
+            exit(EXIT_FAILURE);
+        }
+        printf("Packet sent %d\n", SendPackets);
+
+        int Acknowledge;
+        if (recv(ClientSocket, &Acknowledge, sizeof(Acknowledge), 0) == -1) {
+            perror("Error receiving acknowledgement");
+            exit(EXIT_FAILURE);
+        }
+
+        if (Acknowledge == -1) {
+            printf("Packet %d dropped, resending\n", SendPackets);
+            if (send(ClientSocket, &SendPackets, sizeof(SendPackets), 0) == -1) {
+                perror("Error resending packets");
+                exit(EXIT_FAILURE);
+            }
+            printf("Packet resent %d\n", SendPackets);
+
+            if (recv(ClientSocket, &Acknowledge, sizeof(Acknowledge), 0) == -1) {
+                perror("Error receiving acknowledgement");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        printf("Acknowledge received %d for packet %d\n", Acknowledge, SendPackets);
+        SendPackets++;
+    }
+
+    close(ClientSocket);
+}

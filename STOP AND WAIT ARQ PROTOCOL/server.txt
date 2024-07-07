@@ -1,0 +1,78 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+
+#define PACKETS 10
+#define SERVER_PORT 1234
+
+void main() {
+    // Create socket
+    int ServerSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (ServerSocket == -1) {
+        perror("Error creating socket");
+        exit(EXIT_FAILURE);
+    }
+
+    // Bind
+    struct sockaddr_in Server = {
+        .sin_family = AF_INET,
+        .sin_port = htons(SERVER_PORT),
+        .sin_addr.s_addr = inet_addr("127.0.0.1")
+    };
+    if (bind(ServerSocket, (struct sockaddr*)&Server, sizeof(Server)) == -1) {
+        perror("Error binding");
+        exit(EXIT_FAILURE);
+    }
+
+    // Listen
+    if (listen(ServerSocket, 1) == -1) {
+        perror("Error listening");
+        exit(EXIT_FAILURE);
+    }
+
+    // Accept
+    socklen_t addrlen = sizeof(Server);
+    int ClientAccept = accept(ServerSocket, (struct sockaddr*)&Server, &addrlen);
+    if (ClientAccept == -1) {
+        perror("Error accepting");
+        exit(EXIT_FAILURE);
+    }
+
+    // Stop-and-Wait ARQ
+    int CountPackets = 0;
+    while (CountPackets < PACKETS) {
+        int Data;
+        if (recv(ClientAccept, &Data, sizeof(Data), 0) == -1) {
+            perror("Error receiving data");
+            exit(EXIT_FAILURE);
+        }
+
+        int Random = rand() % PACKETS;
+        if (Random == Data) {
+            printf("Packet %d Dropped, resend it again\n", Random);
+            int Acknowledge = -1;
+            if (send(ClientAccept, &Acknowledge, sizeof(Acknowledge), 0) == -1) {
+                perror("Error sending acknowledgement");
+                exit(EXIT_FAILURE);
+            }
+
+            if (recv(ClientAccept, &Data, sizeof(Data), 0) == -1) {
+                perror("Error receiving dropped data");
+                exit(EXIT_FAILURE);
+            }
+            printf("Packet %d received\n", Data);
+        } else {
+            printf("Packet %d received\n", Data);
+        }
+
+        int Acknowledge = 999;
+        if (send(ClientAccept, &Acknowledge, sizeof(Acknowledge), 0) == -1) {
+            perror("Error sending acknowledgement");
+            exit(EXIT_FAILURE);
+        }
+        CountPackets++;
+    }
+
+    close(ServerSocket);
+}
